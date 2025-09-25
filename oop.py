@@ -9,79 +9,108 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import os
 import time
+from pypdf import PdfReader
 
 
-df = pd.read_excel(r"C:\Users\82105\Downloads\facilities_task (1).xlsx", 0, index_col = None)
-df[["Name", "Industry"]]
+class File:
+    def __init__(self, file):
+        self.file = file
+    def read_file(self):
+        df = pd.read_excel(self.file, 0, index_col = None)
+        df[["Name", "Industry"]]
+        companies_txt = []
+        for i in df.itertuples():
+            if i.Sector == "Healthcare":
+                companies_txt.append(i.Name)
+        return companies_txt
 
-companies_txt = []
-for i in df.itertuples():
-    if i.Sector == "Healthcare":
-        companies_txt.append(i.Name)
+class Driver:
+    def __init__(self):
+        pass
+    def launch(self):
+        self.driver = webdriver.Chrome()
+        self.driver.get("https://www.google.com/")
+        self.driver.maximize_window()
+        reject = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.ID, "W0wltc"))
+        )
+        reject.click()
+        return self.driver
 
-driver = webdriver.Chrome()
-driver.get("https://www.google.com/")
-driver.maximize_window()
-reject = WebDriverWait(driver, 10).until(
-    EC.presence_of_element_located((By.ID, "W0wltc"))
-)
-reject.click()
-
-class Scrape_website:
-    def __init__(self, company_name):
+class Find_website:
+    def __init__(self, company_name, driver):
         self.company_name = company_name
+        self.driver = driver
     def search(self):
-        search = WebDriverWait(driver, 10).until(
+        self.driver.back()
+        search = WebDriverWait(self.driver, 10).until(
                 EC.element_to_be_clickable((By.NAME, "q"))
             )
         search.clear()
         search.send_keys(self.company_name + " careers")
         search.submit()
-
-        website = WebDriverWait(driver, 10000).until(
+        website = WebDriverWait(self.driver, 10000).until(
             EC.element_to_be_clickable((By.XPATH, "(//h3)[1]"))
         )
         website.click()
 
+class Remove_pop_ups:
+    def __init__(self, driver):
+        self.driver = driver
+    def accept_cookies(self):
         try:
-            WebDriverWait(driver, 5).until(
+            WebDriverWait(self.driver, 5).until(
             EC.element_to_be_clickable((By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIGKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'accept')]"))
             ).click()
         except:
             pass
 
-
+class Scroll_down:
+    def __init__(self, driver):
+        self.driver = driver
+    def scroll(self):
         try:
             try:
-                S_button = WebDriverWait(driver, 3).until(
+                S_button = WebDriverWait(self.driver, 3).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'search')]"))
                 )
                 S_button.click()
             except:
                 pass
-            while True:
+            try:
+                button = WebDriverWait(self.driver,3).until(
+                        EC.visibility_of_element_located((By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'city')]"))
+                )
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                button.click()
+                time.sleep(2)
+                return self.driver.page_source      
+            except:
                 try:
-                    button = WebDriverWait(driver,3).until(
-                            EC.visibility_of_element_located((By.XPATH, "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'city')]"))
+                    self.driver.execute_script("window.scrollBy(0, 500)") 
+                    at_bottom = self.driver.execute_script(
+                    "return window.innerHeight + window.scrollY >= document.body.scrollHeight"
                     )
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
-                    button.click()
-                    time.sleep(2)
-                    return driver.page_source
-                    driver.back()      
-                except:
-                    try:
-                        driver.execute_script("window.scrollBy(0, 500)") 
-                        at_bottom = driver.execute_script(
-                        "return window.innerHeight + window.scrollY >= document.body.scrollHeight"
-                        )
-                        if at_bottom:
-                            raise Exception
-                    except:
+                    if at_bottom:
                         raise Exception
+                except:
+                    raise Exception
         except:
-            return driver.page_source
-            driver.back()
+            return self.driver.page_source
+
+
+
+class Pdf_take:
+    def __init__(self, path):
+        self.path = path
+        self.reader = PdfReader(path)
+    def read(self):
+        self.text = ""
+        for p in self.reader.pages:
+            self.text += p.extract_text()
+        return self.text()
+
+
 
 class Parse:
     def __init__(self, source_code):
@@ -96,18 +125,23 @@ class Parse:
         self.cleaned_content = "\n\n".join(
             line.strip() for line in self.cleaned_content.splitlines() if line.strip()
         )
+        return self.cleaned_content
 
-company_objects = {}
-source_codes_list = {}
-source_codes_objects = {}
-for k in companies_txt:
-    company_objects[k] = Scrape_website(k)
-    source_codes_list[k] = company_objects[k].search()
-    source_codes_objects[k] = Parse(source_codes_list[k])
-    final_text = source_codes_objects[k].clean()
-    file_name = k.replace(" ", "_")
-    with open(f"{file_name}.txt", "w", encoding="utf-8") as f:
-        f.write(final_text)
+class Final_file:
+    def __init__(self, company_name, final_text):
+        self.company_name = company_name
+        self.final_text = final_text
+        self.file_name = self.company_name.replace(" ", "_")
+        with open(f"{self.file_name}.txt", "w", encoding="utf-8") as f:
+            f.write(final_text)
 
 
 
+companies = File(r"C:\Users\82105\Downloads\facilities_task (1).xlsx").read_file()
+driver = Driver().launch()
+for c in companies:
+    Find_website(c, driver).search()
+    Remove_pop_ups(driver).accept_cookies()
+    source_code = Scroll_down(driver).scroll()
+    final_text = Parse(source_code).clean()
+    Final_file(c, final_text)
